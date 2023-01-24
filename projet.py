@@ -164,6 +164,8 @@ def solve_problem(
         name="No work on vacation",
     )
 
+    # New constraint to help?
+    # Nobody can be staffed to a job once a job is finished
     # Constraint 6: A project is realized when each qualification has been staffed the right number of days
     # Z[j, d] = 1 if for all days d' in 0..d, sum(Y[e, j, q] * X[e, j, d']) == working_days_per_qualification[q] for all q
     # TODO
@@ -197,6 +199,22 @@ def solve_problem(
             for job_index, _ in enumerate(data["jobs"])
         ),
         name="A job can only be realized once",
+    )
+
+    # if an employee is assigned to a job for a qualification, he must work for this job at least one day
+    # Y[e, j, q] = 1 => sum(X[e, j, d] for d in 0..horizon) >= 1
+    # <=> sum(X[e, j, d] for d in 0..horizon) >= Y[e, j, q]
+    model.addConstrs(
+        (
+            gurobipy.quicksum(
+                X[employee_index, job_index, day] for day in range(data["horizon"])
+            )
+            >= Y[employee_index, job_index, qualification_index]
+            for employee_index, _ in enumerate(data["staff"])
+            for job_index, _ in enumerate(data["jobs"])
+            for qualification_index, qualification in enumerate(data["qualifications"])
+        ),
+        name="If an employee is assigned to a job for a qualification, he must work for this job at least one day",
     )
 
     # Constraint 8: The problem takes place over a given period of time
