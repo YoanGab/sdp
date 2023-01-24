@@ -58,7 +58,7 @@ def get_profit(project: Job, end_date: int) -> int:
 
 def solve_problem(
     data: ProblemData,
-) -> any:
+) -> gurobipy.Model:
     profits_jobs: dict = {
         (job_index, day): get_profit(job, day)
         for job_index, job in enumerate(data["jobs"])
@@ -204,17 +204,42 @@ def solve_problem(
 
     model.optimize()
     if model.Status == gurobipy.GRB.OPTIMAL:
-        print(model.objVal)
-        return model.objVal
+        for v in model.getVars():
+            if v.x == 1:
+                if v.varName[0] == "X":
+                    print(
+                        "Employee",
+                        data["staff"][int(v.varName[2])].name,
+                        "works on job",
+                        data["jobs"][int(v.varName[4])].name,
+                        "on day",
+                        int(v.varName[6]),
+                    )
+                elif v.varName[0] == "Y":
+                    print(
+                        "Employee",
+                        data["staff"][int(v.varName[2])].name,
+                        "is assigned to job",
+                        data["jobs"][int(v.varName[4])].name,
+                        "for qualification",
+                        data["qualifications"][int(v.varName[6])],
+                    )
+                elif v.varName[0] == "Z":
+                    print(
+                        "Job",
+                        data["jobs"][int(v.varName[2])].name,
+                        "is finished on day",
+                        int(v.varName[4]),
+                    )
+
+        print("Objective value:", model.ObjVal)
+        return model
 
 
 def main() -> None:
     data: ProblemData = get_data("small")
-    print(type(data))
-    print(data)
 
-    solution = solve_problem(data)
-    print(f"Solution: {solution}")
+    model: gurobipy.Model = solve_problem(data)
 
 
 if __name__ == "__main__":
