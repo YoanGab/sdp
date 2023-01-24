@@ -107,10 +107,7 @@ def solve_problem(
 
     # Add constraints
 
-    # Constraint 1 : A project must be realized in a number of consecutive days
-    # TODO
-
-    # Constraint 2 : An employee can only be assigned to a project qualification if he has this qualification
+    # Constraint 1 : An employee can only be assigned to a project qualification if he has this qualification
     model.addConstrs(
         (
             Y[employee_index, job_index, qualification_index] == 0
@@ -122,7 +119,7 @@ def solve_problem(
         name="Need to have qualification to work on a job",
     )
 
-    # Constraint 3: An employee can only be assigned to one qualification for a job
+    # Constraint 2: An employee can only be assigned to one qualification for a job
     # Number of qualifications per employee per job <= 1
     model.addConstrs(
         (
@@ -137,7 +134,7 @@ def solve_problem(
         name="One qualification per employee per job",
     )
 
-    # Constraint 4 : An employee can only be assigned to one project per day
+    # Constraint 3 : An employee can only be assigned to one project per day
     # Number of jobs per employee per day <= 1
     model.addConstrs(
         (
@@ -152,7 +149,7 @@ def solve_problem(
         name="One job per employee per day",
     )
 
-    # Constraint 5: An employee must not work on a day of vacation
+    # Constraint 4: An employee must not work on a day of vacation
     # X[e, j, d] = 0 if d in employee e vacations
     model.addConstrs(
         (
@@ -166,33 +163,42 @@ def solve_problem(
 
     # New constraint to help?
     # Nobody can be staffed to a job once a job is finished
-    # Constraint 6: A project is realized when each qualification has been staffed the right number of days
-    # Z[j, d] = 1 if for all days d' in 0..d, sum(Y[e, j, q] * X[e, j, d']) == working_days_per_qualification[q] for all q
+    # Constraint 5: A project is realized when each qualification has been staffed
+    # the right number of days
+    # Z[j, d] = 1 if for all days d' in 0..d,
+    # sum(Y[e, j, q] * X[e, j, d']) == working_days_per_qualification[q] for all q
     # TODO
     # model.addConstrs(
     #     (
-    #         Z[job_index, day]
-    #         == (
+    #         Z[job_index, day] == 1
+    #         if gurobipy.and_(
+    #             gurobipy.all_(
+    #                 gurobipy.quicksum(
+    #                     Y[employee_index, job_index, qualification_index]
+    #                     * X[employee_index, job_index, day_2]
+    #                     for employee_index, _ in enumerate(data["staff"])
+    #                     for day_2 in range(day + 1)
+    #                 )
+    #                 == job.working_days_per_qualification.get(qualification, 0)
+    #                 for qualification_index, qualification in enumerate(
+    #                     data["qualifications"]
+    #                 )
+    #             ),
     #             gurobipy.quicksum(
-    #                 Y[employee_index, job_index, qualification_index]
-    #                 * X[employee_index, job_index, day_2]
+    #                 X[employee_index, job_index, day]
     #                 for employee_index, _ in enumerate(data["staff"])
-    #                 for day_2 in range(day + 1)
     #             )
-    #             == data["jobs"][job_index].working_days_per_qualification.get(
-    #                 qualification, 0
-    #             )
-    #             for qualification_index, qualification in enumerate(
-    #                 data["qualifications"]
-    #             )
+    #             >= 1,
     #         )
+    #         else 0
     #         for job_index, job in enumerate(data["jobs"])
     #         for day in range(data["horizon"])
     #     ),
-    #     name="Project is realized when each qualification has been staffed the right number of days",
+    #     name="Project is realized when each qualification has been staffed the right "
+    #     "number of days",
     # )
 
-    # Constraint 7: A project can only be realized once
+    # Constraint 6: A project can only be realized once
     model.addConstrs(
         (
             gurobipy.quicksum(Z[job_index, day] for day in range(data["horizon"])) == 1
@@ -201,7 +207,8 @@ def solve_problem(
         name="A job can only be realized once",
     )
 
-    # if an employee is assigned to a job for a qualification, he must work for this job at least one day
+    # if an employee is assigned to a job for a qualification, he must work for this
+    # job at least one day
     # Y[e, j, q] = 1 => sum(X[e, j, d] for d in 0..horizon) >= 1
     # <=> sum(X[e, j, d] for d in 0..horizon) >= Y[e, j, q]
     model.addConstrs(
@@ -217,8 +224,9 @@ def solve_problem(
         name="If an employee is assigned to a job for a qualification, he must work for this job at least one day",
     )
 
-    # You can't assign more days of work of qualification than the number of days of work of the qualification
-    # sum(X[e, j, d] for d in 0..horizon) <= working_days_per_qualification[q] * Y[e, j, q]
+    # You can't assign more days of work of qualification than the number of days of
+    # work of the qualification sum(X[e, j, d] for d in 0..horizon) <=
+    # working_days_per_qualification[q] * Y[e, j, q]
     model.addConstrs(
         (
             gurobipy.quicksum(
@@ -234,7 +242,11 @@ def solve_problem(
         name="Staffed days of qualification <= number of days of work of the qualification",
     )
 
-    # Constraint 8: The problem takes place over a given period of time
+    # Don't assign people if job is not done
+    # X[e, j, d] = 0 if Z[j, d] = 0 for all e, d
+    # TODO
+
+    # Constraint 7: The problem takes place over a given period of time
     # Already solved?
 
     model.optimize()
@@ -269,6 +281,22 @@ def solve_problem(
 
         print("Objective value:", model.ObjVal)
         return model
+
+
+def optimize_preferences(model: gurobipy.Model):
+    # Preference 1: Minimize the length of longest job done
+    # Minimize(max(end_date - start_date)) for all jobs_done
+
+    # Preference 2: Minimize the number of jobs staffed for the person with the most jobs
+    # Minimize(max(number_of_jobs_staffed)) for all employees
+    for v in model.getVars():
+        if v.x == 1:
+            if v.varName[0] == "X":
+                ...
+            elif v.varName[0] == "Y":
+                ...
+            elif v.varName[0] == "Z":
+                ...
 
 
 def main() -> None:
