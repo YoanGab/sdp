@@ -1,37 +1,20 @@
 import json
+from typing import TypedDict
 
 import gurobipy
 
-
-class Employee:
-    def __init__(
-        self, index: int, name: str, qualifications: list[str], vacations: list[int]
-    ):
-        self.index = index
-        self.name = name
-        self.qualifications = qualifications
-        self.vacations = vacations
+from entities import Employee, Job
 
 
-class Project:
-    def __init__(
-        self,
-        index: int,
-        name: str,
-        gain: int,
-        due_date: int,
-        daily_penalty: int,
-        working_days_per_qualification: dict[str, int],
-    ):
-        self.index = index
-        self.name = name
-        self.gain = gain
-        self.due_date = due_date
-        self.daily_penalty = daily_penalty
-        self.working_days_per_qualification = working_days_per_qualification
+# Create a typed dict to store all data of the problem
+class ProblemData(TypedDict):
+    horizon: int
+    qualifications: list[str]
+    staff: list[Employee]
+    jobs: list[Job]
 
 
-def get_data(size: str) -> dict:
+def get_data(size: str) -> ProblemData:
     if size == "small":
         file: str = "data/toy_instance.json"
     elif size == "medium":
@@ -42,25 +25,19 @@ def get_data(size: str) -> dict:
         raise ValueError(f"Unknown size {size}")
 
     with open(file) as f:
-        return json.load(f)
+        data: dict = json.load(f)
 
-
-def main() -> None:
-    data: dict = get_data("small")
-    horizon: int = data["horizon"]
-    qualifications: list[str] = data["qualifications"]
-    staff: list[Employee] = [
+    data["staff"] = [
         Employee(
-            index=index,
             name=employee["name"],
             qualifications=employee["qualifications"],
             vacations=employee["vacations"],
         )
         for index, employee in enumerate(data["staff"])
     ]
-    jobs: list[Project] = [
-        Project(
-            index=index,
+
+    data["jobs"] = [
+        Job(
             name=job["name"],
             gain=job["gain"],
             due_date=job["due_date"],
@@ -69,187 +46,161 @@ def main() -> None:
         )
         for index, job in enumerate(data["jobs"])
     ]
-    print(
-        f"Horizon: {horizon}, qualifications: {qualifications}, staff: {staff}, projects: {jobs}"
-    )
 
-    solution = solve_problem(horizon, qualifications, staff, jobs)
-    print(f"Solution: {solution}")
+    return data
 
 
-def get_penalty(project: Project, end_date: int) -> int:
+def get_profit(project: Job, end_date: int) -> int:
     if project.due_date >= end_date:
-        return 0
-    return project.daily_penalty * (end_date - project.due_date)
-
-
-def get_gain(
-    X: gurobipy.tupledict,
-    project: Project,
-    horizon: int,
-    qualifications: list[str],
-    staff: list[Employee],
-) -> int:
-    end_date: int = get_end_date(X, project, horizon, qualifications, staff)
-    if end_date == -1:
-        return 0
-
-    return project.gain - get_penalty(project, end_date)
-
-
-def get_end_date(
-    X: gurobipy.tupledict,
-    project: Project,
-    horizon: int,
-    qualifications: list[str],
-    staff: list[Employee],
-) -> int:
-    end_date: int = 0
-    for q, qualification in enumerate(qualifications):
-        nb_days: int = 0
-        for j in range(horizon):
-            for e in staff:
-                # print(X[j, project.index, e.index, q].value)
-                old_nb_days: int = nb_days
-                print(X[j, project.index, e.index, q])
-                nb_days += X[j, project.index, e.index, q]
-                if old_nb_days < nb_days and end_date < j:
-                    end_date = j
-        if nb_days < project.working_days_per_qualification[q]:
-            return -1
-    return end_date + 1
+        return project.gain
+    return max(project.gain - project.daily_penalty * (end_date - project.due_date), 0)
 
 
 def solve_problem(
-    horizon: int,
-    qualifications: list[str],
-    staff: list[Employee],
-    projects: list[Project],
+    data: ProblemData,
 ) -> any:
-    profits_projects: dict = {
-        (project.index, day): get_profit(project, day)
-        for project in projects
-        for day in range(horizon)
+    profits_jobs: dict = {
+        (job_index, day): get_profit(job, day)
+        for job_index, job in enumerate(data["jobs"])
+        for day in range(data["horizon"])
     }
-    print(profits_projects)
-
     model: gurobipy.Model = gurobipy.Model()
 
-    X = model.addVars(
-        horizon,
-        len(projects),
-        len(staff),
-        len(qualifications),
+    # Create variables
+    # X[e, j, d] = 1 if employee e works on job j on day d
+    # Y[e, j, q] = 1 if employee e is assigned to job j for qualification q
+    # Z[j, d] = 1 if job j is finished on day d
+
+    X: gurobipy.tupledict = model.addVars(
+        len(data["staff"]),
+        len(data["jobs"]),
+        data["horizon"],
         vtype=gurobipy.GRB.BINARY,
         name="X",
     )
 
-    Y = model.addVars(
-        len(projects),
-        len(staff),
-        len(qualifications),
+    Y: gurobipy.tupledict = model.addVars(
+        len(data["staff"]),
+        len(data["jobs"]),
+        len(data["qualifications"]),
         vtype=gurobipy.GRB.BINARY,
         name="Y",
     )
 
-    Z = model.addVars(
-        len(projects),
+    Z: gurobipy.tupledict = model.addVars(
+        len(data["jobs"]),
+        data["horizon"],
         vtype=gurobipy.GRB.BINARY,
         name="Z",
-    )
-
-    A = model.addVars(
-        len(projects),
-        vtype=gurobipy.GRB.INTEGER,
-        name="A",
     )
 
     model.update()
 
     model.setObjective(
         gurobipy.quicksum(
-            # get_gain(X, project, horizon, qualifications, staff)
-            project.gain
-            for project in projects
-            # Z[project.index] * profits_projects[project.index, horizon]
-            # for project in projects
+            profits_jobs[job_index, day] * Z[job_index, day]
+            for job_index, _ in enumerate(data["jobs"])
+            for day in range(data["horizon"])
         ),
         gurobipy.GRB.MAXIMIZE,
     )
 
     # Add constraints
 
-    # Contrainte 1 : Un projet doit être réalisé dans un nombre de jours consécutifs
-    # model.addConstrs(
-    #
-    # )
+    # Constraint 1 : A project must be realized in a number of consecutive days
+    # TODO
 
-    # Contrainte 2 : Un employé peut être affecté à une qualification du projet uniquement s'il a cette compétence
+    # Constraint 2 : An employee can only be assigned to a project qualification if he has this qualification
     model.addConstrs(
-        X[j, p.index, e.index, q] == 0
-        for j in range(horizon)
-        for p in projects
-        for e in staff
-        for q, qualification in enumerate(qualifications)
-        if qualification not in e.qualifications
+        (
+            Y[employee_index, job_index, qualification_index] == 0
+            for employee_index, employee in enumerate(data["staff"])
+            for job_index, _ in enumerate(data["jobs"])
+            for qualification_index, qualification in enumerate(data["qualifications"])
+            if qualification not in employee.qualifications
+        ),
+        name="Need to have qualification to work on a job",
     )
 
-    # Contrainte 3 : Un employé peut être affecté à une seule qualification tout au long du projet
-    # Number of qualifications per employee per project <= 1
-    # model.addConstrs(
-    #     gurobipy.quicksum(
-    #         Y[p.index, e.index, q]
-    #         for q in range(len(qualifications))
-    #     ) <= 1
-    #     for p in projects
-    #     for e in staff
-    # )
-
-    # # Contrainte 4 : Un employé peut être affecté à un seul projet par jour
+    # Constraint 3: An employee can only be assigned to one qualification for a job
+    # Number of qualifications per employee per job <= 1
     model.addConstrs(
-        gurobipy.quicksum(X[j, p, e, q] for p, project in enumerate(projects)) <= 1
-        for q, qualification in enumerate(qualifications)
-        for j in range(horizon)
-        for e, employee in enumerate(staff)
-    )
-
-    # # Contrainte 5 : Un employé ne doit pas travailler un jour de congés
-    model.addConstrs(
-        X[j, p, e, q] == 0
-        for j in range(horizon)
-        for p, project in enumerate(projects)
-        for e, employee in enumerate(staff)
-        for q, qualification in enumerate(qualifications)
-        if j in employee.vacations
-    )
-
-    # Contrainte 6 : Un projet est réalisé lorsque chaque qualification a été staffé le bon nombre de jours
-    # Contrainte 7 : Un projet ne peut être réalisé qu'une seule fois
-    for project in projects:
-        exprs: list = []
-        for q, qualification in enumerate(qualifications):
-            expr1 = gurobipy.LinExpr()
-            for j in range(horizon):
-                for e in staff:
-                    expr1 += X[j, project.index, e.index, q]
-            exprs.append(
-                expr1,
-                gurobipy.GRB.EQUAL,
-                project.working_days_per_qualification.get(qualification, 0),
+        (
+            gurobipy.quicksum(
+                Y[employee_index, job_index, qualification_index]
+                for qualification_index, _ in enumerate(data["qualifications"])
             )
-        model.addConstr(Z[project.index] == (gurobipy.quicksum(exprs) == len(exprs)))
+            <= 1
+            for employee_index, _ in enumerate(data["staff"])
+            for job_index, _ in enumerate(data["jobs"])
+        ),
+        name="One qualification per employee per job",
+    )
 
-    # Contrainte 8 : Le problème se déroule sur un horizon de temps donné
+    # Constraint 4 : An employee can only be assigned to one project per day
+    # Number of jobs per employee per day <= 1
+    model.addConstrs(
+        (
+            gurobipy.quicksum(
+                X[employee_index, job_index, day]
+                for job_index, _ in enumerate(data["jobs"])
+            )
+            <= 1
+            for employee_index, _ in enumerate(data["staff"])
+            for day in range(data["horizon"])
+        ),
+        name="One job per employee per day",
+    )
 
-    # Get end date of project
-    for project in projects:
-        expr1 = gurobipy.LinExpr()
+    # Constraint 5: An employee must not work on a day of vacation
+    # X[e, j, d] = 0 if d in employee e vacations
+    model.addConstrs(
+        (
+            X[employee_index, job_index, day] == 0
+            for employee_index, employee in enumerate(data["staff"])
+            for job_index, _ in enumerate(data["jobs"])
+            for day in employee.vacations
+        ),
+        name="No work on vacation",
+    )
 
-    # expr1 = gurobipy.LinExpr()
-    # for j in range(len(instance_reduce_value)):
-    #     if (j >= price_K * i) & (j < price_K * (i + 1)):
-    #         expr1 += vars[j]
-    # model.addConstr(expr1, GRB.EQUAL, 1)
+    # Constraint 6: A project is realized when each qualification has been staffed the right number of days
+    # Z[j, d] = 1 if for all days d' in 0..d, sum(Y[e, j, q] * X[e, j, d']) == working_days_per_qualification[q] for all q
+    # TODO
+    # model.addConstrs(
+    #     (
+    #         Z[job_index, day]
+    #         == (
+    #             gurobipy.quicksum(
+    #                 Y[employee_index, job_index, qualification_index]
+    #                 * X[employee_index, job_index, day_2]
+    #                 for employee_index, _ in enumerate(data["staff"])
+    #                 for day_2 in range(day + 1)
+    #             )
+    #             == data["jobs"][job_index].working_days_per_qualification.get(
+    #                 qualification, 0
+    #             )
+    #             for qualification_index, qualification in enumerate(
+    #                 data["qualifications"]
+    #             )
+    #         )
+    #         for job_index, job in enumerate(data["jobs"])
+    #         for day in range(data["horizon"])
+    #     ),
+    #     name="Project is realized when each qualification has been staffed the right number of days",
+    # )
+
+    # Constraint 7: A project can only be realized once
+    model.addConstrs(
+        (
+            gurobipy.quicksum(Z[job_index, day] for day in range(data["horizon"])) == 1
+            for job_index, _ in enumerate(data["jobs"])
+        ),
+        name="A job can only be realized once",
+    )
+
+    # Constraint 8: The problem takes place over a given period of time
+    # Already solved?
 
     model.optimize()
     if model.Status == gurobipy.GRB.OPTIMAL:
@@ -257,10 +208,13 @@ def solve_problem(
         return model.objVal
 
 
-def get_profit(project: Project, end_date: int) -> int:
-    if project.due_date >= end_date:
-        return project.gain
-    return project.gain - project.daily_penalty * (end_date - project.due_date)
+def main() -> None:
+    data: ProblemData = get_data("small")
+    print(type(data))
+    print(data)
+
+    solution = solve_problem(data)
+    print(f"Solution: {solution}")
 
 
 if __name__ == "__main__":
