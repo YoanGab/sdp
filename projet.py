@@ -217,6 +217,23 @@ def solve_problem(
         name="If an employee is assigned to a job for a qualification, he must work for this job at least one day",
     )
 
+    # You can't assign more days of work of qualification than the number of days of work of the qualification
+    # sum(X[e, j, d] for d in 0..horizon) <= working_days_per_qualification[q] * Y[e, j, q]
+    model.addConstrs(
+        (
+            gurobipy.quicksum(
+                X[employee_index, job_index, day]
+                * Y[employee_index, job_index, qualification_index]
+                for employee_index, _ in enumerate(data["staff"])
+                for day in range(data["horizon"])
+            )
+            <= job.working_days_per_qualification.get(qualification, 0)
+            for job_index, job in enumerate(data["jobs"])
+            for qualification_index, qualification in enumerate(data["qualifications"])
+        ),
+        name="Staffed days of qualification <= number of days of work of the qualification",
+    )
+
     # Constraint 8: The problem takes place over a given period of time
     # Already solved?
 
