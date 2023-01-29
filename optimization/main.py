@@ -159,13 +159,19 @@ def solve_problem(data: ProblemData) -> None:
     # Ej − dj ≤ Lj ∀ j ∈ J
     model.addConstrs((E[j] - d_j[j] <= L[j] for j in J))
 
+    # Parameters
+    model.Params.PoolSearchMode = 2
+    model.Params.PoolSolutions = 10
+    model.Params.PoolGap = 0.0
+
     model.optimize()
 
-    if model.Status == gurobipy.GRB.OPTIMAL:
-        print("Optimal solution found", model.ObjVal)
-
+    print(f"{model.solCount} solutions")
+    for k in range(model.SolCount):
+        print(f"\nSolution{k + 1}")
+        model.Params.SolutionNumber = k
         for v in model.getVars():
-            if v.x == 0:
+            if v.Xn == 0:
                 continue
 
             if v.varName[0] == "X":
