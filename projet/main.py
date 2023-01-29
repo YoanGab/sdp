@@ -1,8 +1,9 @@
 import json
+import sys
 
 import gurobipy
 
-from entities import ProblemData, Employee, Job
+from .entities import ProblemData, Employee, Job
 
 
 def get_data(size: str) -> ProblemData:
@@ -79,7 +80,7 @@ def solve_problem(data: ProblemData) -> None:
     d_j: dict[Job, int] = {job: job.due_date for job in J}
 
     # Create a new model
-    model: gurobipy.Model = gurobipy.Model("projet")
+    model: gurobipy.Model = gurobipy.Model("CompuOpti")
 
     # Create variables
     # Xi,j,k,t ∈ {0, 1} vaut 1 si la personne i réalise une qualification q pour le projet j pendant la journée t, 0 sinon, pour i ∈ S, j ∈ J , k ∈ Q, t ∈ H.
@@ -172,7 +173,8 @@ def solve_problem(data: ProblemData) -> None:
 
 
 def main() -> None:
-    data: ProblemData = get_data("small")
+    size: str = sys.argv[1]
+    data: ProblemData = get_data(size)
     solve_problem(data)
 
 
