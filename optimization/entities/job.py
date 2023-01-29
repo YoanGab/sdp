@@ -16,7 +16,8 @@ class Job:
         ] = working_days_per_qualification
 
     def __str__(self):
-        return f"Project: {self.name} (gain: {self.gain}, due date: {self.due_date}, daily penalty: {self.daily_penalty}, working days per qualification: {self.working_days_per_qualification})"
+        return self.name
+        #return f"Project: {self.name} (gain: {self.gain}, due date: {self.due_date}, daily penalty: {self.daily_penalty}, working days per qualification: {self.working_days_per_qualification})"
 
     def __repr__(self):
         return self.__str__()
