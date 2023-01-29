@@ -57,7 +57,7 @@ def solve_problem(data: ProblemData) -> None:
 
     V_i_S: dict[Employee, list[int]] = {employee: employee.vacations for employee in S}
 
-    # Pour j ∈ J, un projet j est caract´eris´e par :
+    # Pour j ∈ J, un optimization j est caract´eris´e par :
     # – un sous-ensemble de qualifications Q_j^J ⊆ Q ;
     Q_j_J: dict[Job, list[str]] = {
         job: list(job.working_days_per_qualification.keys()) for job in J
@@ -70,33 +70,33 @@ def solve_problem(data: ProblemData) -> None:
         }
         for job in J
     }
-    # – un gain g_j ∈ N obtenu le projet est accompli ;
+    # – un gain g_j ∈ N obtenu le optimization est accompli ;
     g_j: dict[Job, int] = {job: job.gain for job in J}
 
     # – une p´enalit´e financi`ere par journ´ee de retard c_j ∈ N
     c_j: dict[Job, int] = {job: job.daily_penalty for job in J}
 
-    # - une date de fin d_j est prévue pour le projet j
+    # - une date de fin d_j est prévue pour le optimization j
     d_j: dict[Job, int] = {job: job.due_date for job in J}
 
     # Create a new model
     model: gurobipy.Model = gurobipy.Model("CompuOpti")
 
     # Create variables
-    # Xi,j,k,t ∈ {0, 1} vaut 1 si la personne i réalise une qualification q pour le projet j pendant la journée t, 0 sinon, pour i ∈ S, j ∈ J , k ∈ Q, t ∈ H.
+    # Xi,j,k,t ∈ {0, 1} vaut 1 si la personne i réalise une qualification q pour le optimization j pendant la journée t, 0 sinon, pour i ∈ S, j ∈ J , k ∈ Q, t ∈ H.
     X = model.addVars(
         [(i, j, k, t) for i in S for j in J for k in Q for t in H],
         vtype=gurobipy.GRB.BINARY,
         name="X",
     )
 
-    # Yj ∈ {0, 1} vaut 1 si le projet j est réalisé totalement, 0 sinon, j ∈ J
+    # Yj ∈ {0, 1} vaut 1 si le optimization j est réalisé totalement, 0 sinon, j ∈ J
     Y = model.addVars(J, vtype=gurobipy.GRB.BINARY, name="Y")
 
-    # Lj nombre de jours de retard pour le projet j ∈ J
+    # Lj nombre de jours de retard pour le optimization j ∈ J
     L = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="L")
 
-    # Ej date de fin de réalisation du projet j ∈ J
+    # Ej date de fin de réalisation du optimization j ∈ J
     E = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="E", lb=min(H), ub=max(H))
 
     model.update()

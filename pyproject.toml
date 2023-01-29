@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "projet"
+name = "optimization"
 version = "0.1.0"
 description = ""
 authors = ["Yoan Gabison <yoan.gabison@student-cs.fr>"]
@@ -15,4 +15,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-projet = "projet.main:main"
+compu_opti = "optimization.main:main"

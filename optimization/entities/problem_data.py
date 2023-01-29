@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from projet.entities import Job, Employee
+from optimization.entities import Job, Employee
 
 
 class ProblemData(TypedDict):
