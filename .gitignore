@@ -1,0 +1,9 @@
+# Cache files
+*.pyc
+__pycache__
+
+# MacOs files
+.DS_Store
+
+# PyCharm files
+.idea

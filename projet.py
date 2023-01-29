@@ -1,17 +1,8 @@
 import json
-from typing import TypedDict
 
 import gurobipy
 
-from entities import Employee, Job
-
-
-# Create a typed dict to store all data of the problem
-class ProblemData(TypedDict):
-    horizon: int
-    qualifications: list[str]
-    staff: list[Employee]
-    jobs: list[Job]
+from entities import ProblemData, Employee, Job
 
 
 def get_data(size: str) -> ProblemData:
@@ -50,259 +41,139 @@ def get_data(size: str) -> ProblemData:
     return data
 
 
-def get_profit(project: Job, end_date: int) -> int:
-    if project.due_date >= end_date:
-        return project.gain
-    return max(project.gain - project.daily_penalty * (end_date - project.due_date), 0)
+def solve_problem(data: ProblemData) -> None:
+    H: list[int] = list(range(1, data["horizon"] + 1))
+    Q: list[str] = data["qualifications"]
+    S: list[Employee] = data["staff"]
+    J: list[Job] = data["jobs"]
 
-
-def solve_problem(
-    data: ProblemData,
-) -> gurobipy.Model:
-    profits_jobs: dict = {
-        (job_index, day): get_profit(job, day)
-        for job_index, job in enumerate(data["jobs"])
-        for day in range(data["horizon"])
+    # Pour i ∈ S, un membre du personnel i est caract´eris´e par :
+    # – un sous-ensemble de qualifications Q_i^S ⊆ Q ;
+    # – un sous-ensemble de jours de congés V_i^S ⊆ H ;
+    Q_i_S: dict[Employee, list[str]] = {
+        employee: employee.qualifications for employee in S
     }
-    model: gurobipy.Model = gurobipy.Model()
+
+    V_i_S: dict[Employee, list[int]] = {employee: employee.vacations for employee in S}
+
+    # Pour j ∈ J, un projet j est caract´eris´e par :
+    # – un sous-ensemble de qualifications Q_j^J ⊆ Q ;
+    Q_j_J: dict[Job, list[str]] = {
+        job: list(job.working_days_per_qualification.keys()) for job in J
+    }
+    # – des nombres de jours/personnes n_j,k ∈ N pour chaque qualification d’int´erˆet k ∈ Q_j^J
+    n_j_k: dict[Job, dict[str, int]] = {
+        job: {
+            qualification: job.working_days_per_qualification[qualification]
+            for qualification in job.working_days_per_qualification
+        }
+        for job in J
+    }
+    # – un gain g_j ∈ N obtenu le projet est accompli ;
+    g_j: dict[Job, int] = {job: job.gain for job in J}
+
+    # – une p´enalit´e financi`ere par journ´ee de retard c_j ∈ N
+    c_j: dict[Job, int] = {job: job.daily_penalty for job in J}
+
+    # - une date de fin d_j est prévue pour le projet j
+    d_j: dict[Job, int] = {job: job.due_date for job in J}
+
+    # Create a new model
+    model: gurobipy.Model = gurobipy.Model("projet")
 
     # Create variables
-    # X[e, j, d] = 1 if employee e works on job j on day d
-    # Y[e, j, q] = 1 if employee e is assigned to job j for qualification q
-    # Z[j, d] = 1 if job j is finished on day d
-
-    X: gurobipy.tupledict = model.addVars(
-        len(data["staff"]),
-        len(data["jobs"]),
-        data["horizon"],
+    # Xi,j,k,t ∈ {0, 1} vaut 1 si la personne i réalise une qualification q pour le projet j pendant la journée t, 0 sinon, pour i ∈ S, j ∈ J , k ∈ Q, t ∈ H.
+    X = model.addVars(
+        [(i, j, k, t) for i in S for j in J for k in Q for t in H],
         vtype=gurobipy.GRB.BINARY,
         name="X",
     )
 
-    Y: gurobipy.tupledict = model.addVars(
-        len(data["staff"]),
-        len(data["jobs"]),
-        len(data["qualifications"]),
-        vtype=gurobipy.GRB.BINARY,
-        name="Y",
-    )
+    # Yj ∈ {0, 1} vaut 1 si le projet j est réalisé totalement, 0 sinon, j ∈ J
+    Y = model.addVars(J, vtype=gurobipy.GRB.BINARY, name="Y")
 
-    Z: gurobipy.tupledict = model.addVars(
-        len(data["jobs"]),
-        data["horizon"],
-        vtype=gurobipy.GRB.BINARY,
-        name="Z",
-    )
+    # Lj nombre de jours de retard pour le projet j ∈ J
+    L = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="L")
+
+    # Ej date de fin de réalisation du projet j ∈ J
+    E = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="E", lb=min(H), ub=max(H))
 
     model.update()
 
+    # maximize(Somme for j in J of (Y_j × gj − Lj × cj )
     model.setObjective(
-        gurobipy.quicksum(
-            profits_jobs[job_index, day] * Z[job_index, day]
-            for job_index, _ in enumerate(data["jobs"])
-            for day in range(data["horizon"])
-        ),
+        gurobipy.quicksum(Y[j] * g_j[j] - L[j] * c_j[j] for j in J),
         gurobipy.GRB.MAXIMIZE,
     )
 
-    # Add constraints
-
-    # Constraint 1 : An employee can only be assigned to a project qualification if he has this qualification
+    # Somme for j in J, k in Q of (X[i, j, k, t] <= 1 for all i in S, t in H)
     model.addConstrs(
-        (
-            Y[employee_index, job_index, qualification_index] == 0
-            for employee_index, employee in enumerate(data["staff"])
-            for job_index, _ in enumerate(data["jobs"])
-            for qualification_index, qualification in enumerate(data["qualifications"])
-            if qualification not in employee.qualifications
-        ),
-        name="Need to have qualification to work on a job",
+        gurobipy.quicksum(X[i, j, k, t] for j in J for k in Q) <= 1
+        for i in S
+        for t in H
     )
 
-    # Constraint 2: An employee can only be assigned to one qualification for a job
-    # Number of qualifications per employee per job <= 1
+    # Somme for j in J, k in Q of (X[i, j, k, t] = 0 for all i in S, t in V_i_S)
     model.addConstrs(
-        (
-            gurobipy.quicksum(
-                Y[employee_index, job_index, qualification_index]
-                for qualification_index, _ in enumerate(data["qualifications"])
-            )
-            <= 1
-            for employee_index, _ in enumerate(data["staff"])
-            for job_index, _ in enumerate(data["jobs"])
-        ),
-        name="One qualification per employee per job",
+        gurobipy.quicksum(X[i, j, k, t] for j in J for k in Q) == 0
+        for i in S
+        for t in V_i_S[i]
     )
 
-    # Constraint 3 : An employee can only be assigned to one project per day
-    # Number of jobs per employee per day <= 1
+    # X[i, j, k, t] = 0 for all i in S, j in J, k in Q if k not in Q_i^S or k not in Q_j^J, for t in H
     model.addConstrs(
         (
-            gurobipy.quicksum(
-                X[employee_index, job_index, day]
-                for job_index, _ in enumerate(data["jobs"])
-            )
-            <= 1
-            for employee_index, _ in enumerate(data["staff"])
-            for day in range(data["horizon"])
+            X[i, j, k, t] == 0
+            for i in S
+            for j in J
+            for k in Q
+            for t in H
+            if k not in Q_i_S[i] or k not in Q_j_J[j]
         ),
-        name="One job per employee per day",
     )
 
-    # Constraint 4: An employee must not work on a day of vacation
-    # X[e, j, d] = 0 if d in employee e vacations
+    # Yj × n_j,k ≤ Somme for i in S, t in H of (X[i, j, k, t] for j in J for k in Q_j^J)
     model.addConstrs(
         (
-            X[employee_index, job_index, day] == 0
-            for employee_index, employee in enumerate(data["staff"])
-            for job_index, _ in enumerate(data["jobs"])
-            for day in employee.vacations
+            Y[j] * n_j_k[j][k] <= gurobipy.quicksum(X[i, j, k, t] for i in S for t in H)
+            for j in J
+            for k in Q_j_J[j]
         ),
-        name="No work on vacation",
     )
 
-    # New constraint to help?
-    # Nobody can be staffed to a job once a job is finished
-    # Constraint 5: A project is realized when each qualification has been staffed
-    # the right number of days
-    # Z[j, d] = 1 if for all days d' in 0..d,
-    # sum(Y[e, j, q] * X[e, j, d']) == working_days_per_qualification[q] for all q
-    # TODO
-    # model.addConstrs(
-    #     (
-    #         Z[job_index, day] == 1
-    #         if gurobipy.and_(
-    #             gurobipy.all_(
-    #                 gurobipy.quicksum(
-    #                     Y[employee_index, job_index, qualification_index]
-    #                     * X[employee_index, job_index, day_2]
-    #                     for employee_index, _ in enumerate(data["staff"])
-    #                     for day_2 in range(day + 1)
-    #                 )
-    #                 == job.working_days_per_qualification.get(qualification, 0)
-    #                 for qualification_index, qualification in enumerate(
-    #                     data["qualifications"]
-    #                 )
-    #             ),
-    #             gurobipy.quicksum(
-    #                 X[employee_index, job_index, day]
-    #                 for employee_index, _ in enumerate(data["staff"])
-    #             )
-    #             >= 1,
-    #         )
-    #         else 0
-    #         for job_index, job in enumerate(data["jobs"])
-    #         for day in range(data["horizon"])
-    #     ),
-    #     name="Project is realized when each qualification has been staffed the right "
-    #     "number of days",
-    # )
-
-    # Constraint 6: A project can only be realized once
+    # Somme for i in S, t in H of (X[i, j, k, t] <= n_j_k for j in J for k in Q_j^J)
     model.addConstrs(
         (
-            gurobipy.quicksum(Z[job_index, day] for day in range(data["horizon"])) == 1
-            for job_index, _ in enumerate(data["jobs"])
+            gurobipy.quicksum(X[i, j, k, t] for i in S for t in H) <= n_j_k[j][k]
+            for j in J
+            for k in Q_j_J[j]
         ),
-        name="A job can only be realized once",
     )
 
-    # if an employee is assigned to a job for a qualification, he must work for this
-    # job at least one day
-    # Y[e, j, q] = 1 => sum(X[e, j, d] for d in 0..horizon) >= 1
-    # <=> sum(X[e, j, d] for d in 0..horizon) >= Y[e, j, q]
+    # Xi,j,k,t × t ≤ Ej ∀ i ∈ S, ∀ j ∈ J , ∀ k ∈ Q, ∀ t ∈ H
     model.addConstrs(
-        (
-            gurobipy.quicksum(
-                X[employee_index, job_index, day] for day in range(data["horizon"])
-            )
-            >= Y[employee_index, job_index, qualification_index]
-            for employee_index, _ in enumerate(data["staff"])
-            for job_index, _ in enumerate(data["jobs"])
-            for qualification_index, qualification in enumerate(data["qualifications"])
-        ),
-        name="If an employee is assigned to a job for a qualification, he must work for this job at least one day",
+        (X[i, j, k, t] * t <= E[j] for i in S for j in J for k in Q for t in H),
     )
 
-    # You can't assign more days of work of qualification than the number of days of
-    # work of the qualification sum(X[e, j, d] for d in 0..horizon) <=
-    # working_days_per_qualification[q] * Y[e, j, q]
-    model.addConstrs(
-        (
-            gurobipy.quicksum(
-                X[employee_index, job_index, day]
-                * Y[employee_index, job_index, qualification_index]
-                for employee_index, _ in enumerate(data["staff"])
-                for day in range(data["horizon"])
-            )
-            <= job.working_days_per_qualification.get(qualification, 0)
-            for job_index, job in enumerate(data["jobs"])
-            for qualification_index, qualification in enumerate(data["qualifications"])
-        ),
-        name="Staffed days of qualification <= number of days of work of the qualification",
-    )
-
-    # Don't assign people if job is not done
-    # X[e, j, d] = 0 if Z[j, d] = 0 for all e, d
-    # TODO
-
-    # Constraint 7: The problem takes place over a given period of time
-    # Already solved?
+    # Ej − dj ≤ Lj ∀ j ∈ J
+    model.addConstrs((E[j] - d_j[j] <= L[j] for j in J))
 
     model.optimize()
+
     if model.Status == gurobipy.GRB.OPTIMAL:
+        print("Optimal solution found", model.ObjVal)
+
         for v in model.getVars():
-            if v.x == 1:
-                if v.varName[0] == "X":
-                    print(
-                        "Employee",
-                        data["staff"][int(v.varName[2])].name,
-                        "works on job",
-                        data["jobs"][int(v.varName[4])].name,
-                        "on day",
-                        int(v.varName[6]),
-                    )
-                elif v.varName[0] == "Y":
-                    print(
-                        "Employee",
-                        data["staff"][int(v.varName[2])].name,
-                        "is assigned to job",
-                        data["jobs"][int(v.varName[4])].name,
-                        "for qualification",
-                        data["qualifications"][int(v.varName[6])],
-                    )
-                elif v.varName[0] == "Z":
-                    print(
-                        "Job",
-                        data["jobs"][int(v.varName[2])].name,
-                        "is finished on day",
-                        int(v.varName[4]),
-                    )
+            if v.x == 0:
+                continue
 
-        print("Objective value:", model.ObjVal)
-        return model
-
-
-def optimize_preferences(model: gurobipy.Model):
-    # Preference 1: Minimize the length of longest job done
-    # Minimize(max(end_date - start_date)) for all jobs_done
-
-    # Preference 2: Minimize the number of jobs staffed for the person with the most jobs
-    # Minimize(max(number_of_jobs_staffed)) for all employees
-    for v in model.getVars():
-        if v.x == 1:
             if v.varName[0] == "X":
-                ...
-            elif v.varName[0] == "Y":
-                ...
-            elif v.varName[0] == "Z":
-                ...
+                print(v.varName)
 
 
 def main() -> None:
     data: ProblemData = get_data("small")
-
-    model: gurobipy.Model = solve_problem(data)
+    solve_problem(data)
 
 
 if __name__ == "__main__":
