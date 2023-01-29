@@ -167,15 +167,29 @@ def solve_problem(data: ProblemData) -> None:
     model.optimize()
 
     print(f"{model.solCount} solutions")
+    solutions = []
     for k in range(model.SolCount):
         print(f"\nSolution{k + 1}")
         model.Params.SolutionNumber = k
+        employees = {}
         for v in model.getVars():
             if v.Xn == 0:
                 continue
 
             if v.varName[0] == "X":
-                print(v.varName)
+                name = v.varName[2:-1].split(",")
+                    print(v.varName)
+                    print(name[0])
+                    if name[0] not in employees:
+                        employees[name[0]] = {}
+                        employees[name[0]]["project_name"] = []
+                        employees[name[0]]["qualification"] = []
+                        employees[name[0]]["jour"] = []
+                    employees[name[0]]["project_name"].append(name[1])
+                    employees[name[0]]["qualification"].append(name[2])
+                    employees[name[0]]["jour"].append(name[3])
+            solutions.append(employees)
+        print(solutions[0])
 
 
 def main() -> None:
