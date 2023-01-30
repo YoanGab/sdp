@@ -161,15 +161,17 @@ def solve_problem(data: ProblemData) -> None:
 
     # Parameters
     model.Params.PoolSearchMode = 2
-    model.Params.PoolSolutions = 10
+    model.Params.PoolSolutions = 10**8
     model.Params.PoolGap = 0.0
+    model.Params.TimeLimit = 120
 
     model.optimize()
 
     print(f"{model.solCount} solutions")
-    solutions = []
+    solutions: set = set()
     for k in range(model.SolCount):
-        print(f"\nSolution{k + 1}")
+        if (k+1) % 1000 == 0 and k > 100:
+            print(f"\nSolution{k + 1}")
         model.Params.SolutionNumber = k
         employees = {}
         for v in model.getVars():
@@ -178,18 +180,18 @@ def solve_problem(data: ProblemData) -> None:
 
             if v.varName[0] == "X":
                 name = v.varName[2:-1].split(",")
-                    print(v.varName)
-                    print(name[0])
-                    if name[0] not in employees:
-                        employees[name[0]] = {}
-                        employees[name[0]]["project_name"] = []
-                        employees[name[0]]["qualification"] = []
-                        employees[name[0]]["jour"] = []
-                    employees[name[0]]["project_name"].append(name[1])
-                    employees[name[0]]["qualification"].append(name[2])
-                    employees[name[0]]["jour"].append(name[3])
-            solutions.append(employees)
-        print(solutions[0])
+                employee_name: str = name[0]
+                project_name: str = name[1]
+                qualification: str = name[2]
+                day: int = int(name[3])
+
+                if employee_name not in employees:
+                    employees[employee_name] = {"projects": {}, "schedule": {}}
+                employees[employee_name]["projects"][project_name] = qualification
+                employees[employee_name]["schedule"][day] = project_name
+
+        solutions.add(json.dumps(employees))
+    print(len(solutions))
 
 
 def main() -> None:
