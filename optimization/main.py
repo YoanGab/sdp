@@ -48,7 +48,7 @@ def solve_problem(data: ProblemData) -> None:
     S: list[Employee] = data["staff"]
     J: list[Job] = data["jobs"]
 
-    # Pour i ∈ S, un membre du personnel i est caract´eris´e par :
+    # Pour i ∈ S, un membre du personnel i est caractérisé par :
     # – un sous-ensemble de qualifications Q_i^S ⊆ Q ;
     # – un sous-ensemble de jours de congés V_i^S ⊆ H ;
     Q_i_S: dict[Employee, list[str]] = {
@@ -57,12 +57,13 @@ def solve_problem(data: ProblemData) -> None:
 
     V_i_S: dict[Employee, list[int]] = {employee: employee.vacations for employee in S}
 
-    # Pour j ∈ J, un optimization j est caract´eris´e par :
+    # Pour j ∈ J, un job j est caractérisé par :
     # – un sous-ensemble de qualifications Q_j^J ⊆ Q ;
     Q_j_J: dict[Job, list[str]] = {
         job: list(job.working_days_per_qualification.keys()) for job in J
     }
-    # – des nombres de jours/personnes n_j,k ∈ N pour chaque qualification d’int´erˆet k ∈ Q_j^J
+    # – des nombres de jours/personnes n_j,k ∈ N
+    # pour chaque qualification d’intérêt k ∈ Q_j^J
     n_j_k: dict[Job, dict[str, int]] = {
         job: {
             qualification: job.working_days_per_qualification[qualification]
@@ -70,44 +71,50 @@ def solve_problem(data: ProblemData) -> None:
         }
         for job in J
     }
-    # – un gain g_j ∈ N obtenu le optimization est accompli ;
+    # – un gain g_j ∈ N obtenu lorsque le job j est accompli ;
     g_j: dict[Job, int] = {job: job.gain for job in J}
 
-    # – une p´enalit´e financi`ere par journ´ee de retard c_j ∈ N
+    # – une pénalité financière par journée de retard c_j ∈ N
     c_j: dict[Job, int] = {job: job.daily_penalty for job in J}
 
-    # - une date de fin d_j est prévue pour le optimization j
+    # - une date de fin d_j est prévue pour le job j
     d_j: dict[Job, int] = {job: job.due_date for job in J}
 
     # Create a new model
     model: gurobipy.Model = gurobipy.Model("CompuOpti")
 
     # Create variables
-    # Xi,j,k,t ∈ {0, 1} vaut 1 si la personne i réalise une qualification q pour le optimization j pendant la journée t, 0 sinon, pour i ∈ S, j ∈ J , k ∈ Q, t ∈ H.
+    # Xi,j,k,t ∈ {0, 1}
+    # vaut 1 si
+    #   la personne i réalise une qualification q pour le job j pendant la journée t,
+    # 0 sinon,
+    # pour i ∈ S, j ∈ J, k ∈ Q, t ∈ H.
     X = model.addVars(
         [(i, j, k, t) for i in S for j in J for k in Q for t in H],
         vtype=gurobipy.GRB.BINARY,
         name="X",
     )
 
-    # Yj ∈ {0, 1} vaut 1 si le optimization j est réalisé totalement, 0 sinon, j ∈ J
+    # Yj ∈ {0, 1} vaut 1 si le job j est réalisé totalement, 0 sinon, j ∈ J
     Y = model.addVars(J, vtype=gurobipy.GRB.BINARY, name="Y")
 
-    # Lj nombre de jours de retard pour le optimization j ∈ J
+    # Lj nombre de jours de retard pour le job j ∈ J
     L = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="L")
 
-    # Ej date de fin de réalisation du optimization j ∈ J
+    # Ej date de fin de réalisation du job j ∈ J
     E = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="E", lb=min(H), ub=max(H))
 
     model.update()
 
-    # maximize(Somme for j in J of (Y_j × gj − Lj × cj )
+    # maximize(Somme for j in J of (Y_j × gj − Lj × cj)
+    # Objectif: Maximizer la somme des différences des gains et des pertes pour chaque projet
     model.setObjective(
         gurobipy.quicksum(Y[j] * g_j[j] - L[j] * c_j[j] for j in J),
         gurobipy.GRB.MAXIMIZE,
     )
 
     # Somme for j in J, k in Q of (X[i, j, k, t] <= 1 for all i in S, t in H)
+    # Max of 1 qualification assigned per job for each employee for each day
     model.addConstrs(
         gurobipy.quicksum(X[i, j, k, t] for j in J for k in Q) <= 1
         for i in S
@@ -115,13 +122,18 @@ def solve_problem(data: ProblemData) -> None:
     )
 
     # Somme for j in J, k in Q of (X[i, j, k, t] = 0 for all i in S, t in V_i_S)
+    # Can't work during vacations
     model.addConstrs(
         gurobipy.quicksum(X[i, j, k, t] for j in J for k in Q) == 0
         for i in S
         for t in V_i_S[i]
     )
 
-    # X[i, j, k, t] = 0 for all i in S, j in J, k in Q if k not in Q_i^S or k not in Q_j^J, for t in H
+    # X[i, j, k, t] = 0
+    # for all i in S, j in J, k in Q if k not in Q_i^S or k not in Q_j^J, for t in H
+    # Can't work
+    #   if employee doesn't have the qualification
+    #   or if job doesn't require this qualification
     model.addConstrs(
         (
             X[i, j, k, t] == 0
@@ -134,6 +146,7 @@ def solve_problem(data: ProblemData) -> None:
     )
 
     # Yj × n_j,k ≤ Somme for i in S, t in H of (X[i, j, k, t] for j in J for k in Q_j^J)
+    # Days worked must be superior or equal to number of days required if job is done
     model.addConstrs(
         (
             Y[j] * n_j_k[j][k] <= gurobipy.quicksum(X[i, j, k, t] for i in S for t in H)
@@ -143,6 +156,7 @@ def solve_problem(data: ProblemData) -> None:
     )
 
     # Somme for i in S, t in H of (X[i, j, k, t] <= n_j_k for j in J for k in Q_j^J)
+    # Days worked per qualification must be inferior or equal to days required
     model.addConstrs(
         (
             gurobipy.quicksum(X[i, j, k, t] for i in S for t in H) <= n_j_k[j][k]
@@ -152,16 +166,18 @@ def solve_problem(data: ProblemData) -> None:
     )
 
     # Xi,j,k,t × t ≤ Ej ∀ i ∈ S, ∀ j ∈ J , ∀ k ∈ Q, ∀ t ∈ H
+    # End date of a job must be superior or equal to last day of work
     model.addConstrs(
         (X[i, j, k, t] * t <= E[j] for i in S for j in J for k in Q for t in H),
     )
 
     # Ej − dj ≤ Lj ∀ j ∈ J
+    # Number of late days must be superior or equal to end date - due date
     model.addConstrs((E[j] - d_j[j] <= L[j] for j in J))
 
     # Parameters
     model.Params.PoolSearchMode = 2
-    model.Params.PoolSolutions = 10**8
+    model.Params.PoolSolutions = 10_000
     model.Params.PoolGap = 0.0
     model.Params.TimeLimit = 120
 
@@ -170,7 +186,7 @@ def solve_problem(data: ProblemData) -> None:
     print(f"{model.solCount} solutions")
     solutions: set = set()
     for k in range(model.SolCount):
-        if (k+1) % 1000 == 0 and k > 100:
+        if (k + 1) % 1000 == 0 and k > 100:
             print(f"\nSolution{k + 1}")
         model.Params.SolutionNumber = k
         employees = {}
@@ -191,7 +207,8 @@ def solve_problem(data: ProblemData) -> None:
                 employees[employee_name]["schedule"][day] = project_name
 
         solutions.add(json.dumps(employees))
-    print(len(solutions))
+        # print(employees, "\n\n")
+    print(len(solutions), "unique solutions")
 
 
 def main() -> None:
