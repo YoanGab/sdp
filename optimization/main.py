@@ -42,7 +42,9 @@ def get_data(size: str) -> ProblemData:
     return data
 
 
-def solve_problem(data: ProblemData) -> None:
+def solve_problem(
+    data: ProblemData, max_nb_projects_per_employee: int, max_duration_project: int
+) -> None:
     H: list[int] = list(range(1, data["horizon"] + 1))
     Q: list[str] = data["qualifications"]
     S: list[Employee] = data["staff"]
@@ -104,10 +106,18 @@ def solve_problem(data: ProblemData) -> None:
     # Ej date de fin de réalisation du job j ∈ J
     E = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="E", lb=min(H), ub=max(H))
 
+    Z = model.addVars(
+        [(i, j) for i in S for j in J],
+        vtype=gurobipy.GRB.BINARY,
+        name="Z",
+    )
+
+    B = model.addVars(J, vtype=gurobipy.GRB.INTEGER, name="B", lb=min(H), ub=max(H))
+
     model.update()
 
-    # maximize(Somme for j in J of (Y_j × gj − Lj × cj)
-    # Objectif: Maximizer la somme des différences des gains et des pertes pour chaque projet
+    # maximize(Somme for j in J of (Y_j × gj − Lj × cj) Objectif: Maximizer la somme
+    # des différences des gains et des pertes pour chaque projet
     model.setObjective(
         gurobipy.quicksum(Y[j] * g_j[j] - L[j] * c_j[j] for j in J),
         gurobipy.GRB.MAXIMIZE,
@@ -175,16 +185,48 @@ def solve_problem(data: ProblemData) -> None:
     # Number of late days must be superior or equal to end date - due date
     model.addConstrs((E[j] - d_j[j] <= L[j] for j in J))
 
+    # Create a constraint to link Z and X
+    # Z = 0 if X = 0
+    model.addConstrs(
+        (
+            Z[i, j] <= gurobipy.quicksum(X[i, j, k, t] for t in H for k in Q)
+            for i in S
+            for j in J
+        )
+    )
+
+    # # Z = 1 if X >= 1
+    model.addConstrs(
+        (Z[i, j] >= X[i, j, k, t] for i in S for j in J for k in Q for t in H)
+    )
+
+    # Max of projects per employee must be equal to max_nb_projects_per_employee
+    model.addConstrs(
+        (
+            gurobipy.quicksum(Z[i, j] for j in J) <= max_nb_projects_per_employee
+            for i in S
+        )
+    )
+
+    # # Start date of a job must be inferior or equal to all days of work
+    model.addConstrs(
+        (B[j] * X[i, j, k, t] <= t for i in S for j in J for k in Q for t in H),
+    )
+
+    # Duration of a job must be inferior or equal to max_duration_project
+    model.addConstrs((E[j] - B[j] <= max_duration_project - 1 for j in J))
+
     # Parameters
-    model.Params.PoolSearchMode = 2
-    model.Params.PoolSolutions = 10_000
-    model.Params.PoolGap = 0.0
-    model.Params.TimeLimit = 120
+    model.Params.PoolSearchMode = 0
+    # model.Params.PoolSolutions = 10_000
+    model.Params.PoolSolutions = 1
+    # model.Params.PoolGap = 0.0
+    # model.Params.TimeLimit = 120
 
     model.optimize()
 
     print(f"{model.solCount} solutions")
-    solutions: set = set()
+    # solutions: set = set()
     for k in range(model.SolCount):
         if (k + 1) % 1000 == 0 and k > 100:
             print(f"\nSolution{k + 1}")
@@ -206,15 +248,20 @@ def solve_problem(data: ProblemData) -> None:
                 employees[employee_name]["projects"][project_name] = qualification
                 employees[employee_name]["schedule"][day] = project_name
 
-        solutions.add(json.dumps(employees))
-        # print(employees, "\n\n")
-    print(len(solutions), "unique solutions")
+            if v.varName[0] == "B":
+                print(v)
+
+            if v.varName[0] == "E":
+                print(v)
+        # solutions.add(json.dumps(employees))
+        print(employees, "\n\n")
+    # print(len(solutions), "unique solutions")
 
 
 def main() -> None:
     size: str = sys.argv[1]
     data: ProblemData = get_data(size)
-    solve_problem(data)
+    solve_problem(data, 10, 1)
 
 
 if __name__ == "__main__":
