@@ -2,6 +2,7 @@ import json
 import sys
 
 import gurobipy
+from tqdm import tqdm
 
 from .entities import ProblemData, Employee, Job
 
@@ -44,7 +45,7 @@ def get_data(size: str) -> ProblemData:
 
 def solve_problem(
     data: ProblemData, max_nb_projects_per_employee: int, max_duration_project: int
-) -> None:
+) -> float:
     H: list[int] = list(range(1, data["horizon"] + 1))
     Q: list[str] = data["qualifications"]
     S: list[Employee] = data["staff"]
@@ -217,19 +218,20 @@ def solve_problem(
     model.addConstrs((E[j] - B[j] <= max_duration_project - 1 for j in J))
 
     # Parameters
+    model.Params.OutputFlag = 0
     model.Params.PoolSearchMode = 0
-    # model.Params.PoolSolutions = 10_000
     model.Params.PoolSolutions = 1
+    # model.Params.PoolSolutions = 10_000
     # model.Params.PoolGap = 0.0
     # model.Params.TimeLimit = 120
 
     model.optimize()
 
-    print(f"{model.solCount} solutions")
+    # print(f"{model.solCount} solutions")
     # solutions: set = set()
     for k in range(model.SolCount):
-        if (k + 1) % 1000 == 0 and k > 100:
-            print(f"\nSolution{k + 1}")
+        # if (k + 1) % 1000 == 0 and k > 100:
+        #     print(f"\nSolution{k + 1}")
         model.Params.SolutionNumber = k
         employees = {}
         for v in model.getVars():
@@ -247,21 +249,31 @@ def solve_problem(
                     employees[employee_name] = {"projects": {}, "schedule": {}}
                 employees[employee_name]["projects"][project_name] = qualification
                 employees[employee_name]["schedule"][day] = project_name
-
-            if v.varName[0] == "B":
-                print(v)
-
-            if v.varName[0] == "E":
-                print(v)
         # solutions.add(json.dumps(employees))
-        print(employees, "\n\n")
+        # print(employees, "\n\n")
+    return model.objVal
     # print(len(solutions), "unique solutions")
 
 
 def main() -> None:
     size: str = sys.argv[1]
     data: ProblemData = get_data(size)
-    solve_problem(data, 10, 1)
+    solutions: dict = {}
+    best_solution: float = -1
+    for day in tqdm(range(data["horizon"], 0, -1)):
+        solutions[day] = {}
+        for nb_project in range(len(data["jobs"]), 0, -1):
+            solution: float = solve_problem(data, day, nb_project)
+            if solution < best_solution:
+                break
+            solutions[day][nb_project] = solution
+            best_solution = solution
+        if len(solutions[day]) == 0:
+            del solutions[day]
+
+    print(solutions)
+    with open(f"optimization/solutions/{size}.json", "w") as f:
+        json.dump(solutions, f, indent=4)
 
 
 if __name__ == "__main__":

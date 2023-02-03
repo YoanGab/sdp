@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 gurobipy = "^10.0.0"
+tqdm = "^4.64.1"
 
 
 [build-system]

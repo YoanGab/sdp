@@ -1,4 +1,12 @@
 [[package]]
+name = "colorama"
+version = "0.4.6"
+description = "Cross-platform colored terminal text."
+category = "main"
+optional = false
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
+
+[[package]]
 name = "gurobipy"
 version = "10.0.0"
 description = "Python interface to Gurobi"
@@ -9,12 +17,33 @@ python-versions = "*"
 [package.extras]
 matrixapi = ["numpy", "scipy"]
 
+[[package]]
+name = "tqdm"
+version = "4.64.1"
+description = "Fast, Extensible Progress Meter"
+category = "main"
+optional = false
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.7"
+
+[package.dependencies]
+colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[package.extras]
+dev = ["py-make (>=0.1.0)", "twine", "wheel"]
+notebook = ["ipywidgets (>=6)"]
+slack = ["slack-sdk"]
+telegram = ["requests"]
+
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "9bf36ebad8470a2bfc7b0abf3179e5d6a9254476e8aaa58b55e4c13fa8d10770"
+content-hash = "2e75349bdbe69b3e73316a195519b3fe24b840983be3673f8a9cb01fb8141036"
 
 [metadata.files]
+colorama = [
+    {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
+    {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
+]
 gurobipy = [
     {file = "gurobipy-10.0.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:b65b41aced302bbe7e23e2a29c8ef3ce0de5d537302b9e6ba36b26af62450136"},
     {file = "gurobipy-10.0.0-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:116031dc29a8a4db72fe8ab332442ff8f253fa9493b58bb23e68206527912131"},
@@ -36,4 +65,8 @@ gurobipy = [
     {file = "gurobipy-10.0.0-cp39-cp39-manylinux2014_aarch64.whl", hash = "sha256:edd43f86643eabb8d8c7a1bacaffcaee593fb934d59cf31a8fb2b5e0f2ed20a4"},
     {file = "gurobipy-10.0.0-cp39-cp39-manylinux2014_x86_64.whl", hash = "sha256:7ec69223961e292b58a37e75b2625bb373dc67b2cb39b66615f9157195fca676"},
     {file = "gurobipy-10.0.0-cp39-cp39-win_amd64.whl", hash = "sha256:7e108ac28875f14815de16a8b4a442f8dfabbd13fb5212a67b34bd4cc715e538"},
+]
+tqdm = [
+    {file = "tqdm-4.64.1-py2.py3-none-any.whl", hash = "sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1"},
+    {file = "tqdm-4.64.1.tar.gz", hash = "sha256:5f4f682a004951c1b450bc753c710e9280c5746ce6ffedee253ddbcbf54cf1e4"},
 ]
