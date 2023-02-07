@@ -259,17 +259,11 @@ def main() -> None:
     size: str = sys.argv[1]
     data: ProblemData = get_data(size)
     solutions: dict = {}
-    best_solution: float = -1
     for day in tqdm(range(data["horizon"], 0, -1)):
         solutions[day] = {}
         for nb_project in range(len(data["jobs"]), 0, -1):
             solution: float = solve_problem(data, day, nb_project)
-            if solution < best_solution:
-                break
             solutions[day][nb_project] = solution
-            best_solution = solution
-        if len(solutions[day]) == 0:
-            del solutions[day]
 
     print(solutions)
     with open(f"optimization/solutions/{size}.json", "w") as f:
