@@ -1,9 +1,9 @@
 import json
+import os
 import sys
 
 import gurobipy
 from tqdm import tqdm
-
 from .entities import ProblemData, Employee, Job
 
 
@@ -196,7 +196,7 @@ def solve_problem(
         )
     )
 
-    # # Z = 1 if X >= 1
+    # Z = 1 if X >= 1
     model.addConstrs(
         (Z[i, j] >= X[i, j, k, t] for i in S for j in J for k in Q for t in H)
     )
@@ -221,53 +221,32 @@ def solve_problem(
     model.Params.OutputFlag = 0
     model.Params.PoolSearchMode = 0
     model.Params.PoolSolutions = 1
-    # model.Params.PoolSolutions = 10_000
-    # model.Params.PoolGap = 0.0
-    # model.Params.TimeLimit = 120
 
     model.optimize()
-
-    # print(f"{model.solCount} solutions")
-    # solutions: set = set()
-    for k in range(model.SolCount):
-        # if (k + 1) % 1000 == 0 and k > 100:
-        #     print(f"\nSolution{k + 1}")
-        model.Params.SolutionNumber = k
-        employees = {}
-        for v in model.getVars():
-            if v.Xn == 0:
-                continue
-
-            if v.varName[0] == "X":
-                name = v.varName[2:-1].split(",")
-                employee_name: str = name[0]
-                project_name: str = name[1]
-                qualification: str = name[2]
-                day: int = int(name[3])
-
-                if employee_name not in employees:
-                    employees[employee_name] = {"projects": {}, "schedule": {}}
-                employees[employee_name]["projects"][project_name] = qualification
-                employees[employee_name]["schedule"][day] = project_name
-        # solutions.add(json.dumps(employees))
-        # print(employees, "\n\n")
     return model.objVal
-    # print(len(solutions), "unique solutions")
 
 
 def main() -> None:
     size: str = sys.argv[1]
+    day: int = int(sys.argv[2])
     data: ProblemData = get_data(size)
-    solutions: dict = {}
-    for day in tqdm(range(data["horizon"], 0, -1)):
-        solutions[day] = {}
-        for nb_project in range(len(data["jobs"]), 0, -1):
-            solution: float = solve_problem(data, day, nb_project)
-            solutions[day][nb_project] = solution
+    folder_path: str = f"solutions/{size}"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    file_path: str = f"{folder_path}/{day}.json"
+    try:
+        with open(file_path, "r") as f:
+            solutions: dict = json.load(f)
+    except FileNotFoundError:
+        solutions: dict = {}
 
-    print(solutions)
-    with open(f"optimization/solutions/{size}.json", "w") as f:
-        json.dump(solutions, f, indent=4)
+    for nb_project in tqdm(range(len(data["jobs"]), 0, -1)):
+        if str(nb_project) in solutions:
+            continue
+        solution: float = solve_problem(data, day, nb_project)
+        solutions[nb_project] = solution
+        with open(file_path, "w") as f:
+            json.dump(solutions, f, indent=4)
 
 
 if __name__ == "__main__":
