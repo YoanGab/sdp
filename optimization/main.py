@@ -1,9 +1,11 @@
 import json
+import multiprocessing
 import os
 import sys
 
 import gurobipy
 from tqdm import tqdm
+
 from .entities import ProblemData, Employee, Job
 
 
@@ -44,7 +46,10 @@ def get_data(size: str) -> ProblemData:
 
 
 def solve_problem(
-    data: ProblemData, max_nb_projects_per_employee: int, max_duration_project: int
+    data: ProblemData,
+    max_nb_projects_per_employee: int,
+    max_duration_project: int,
+    timeout: int = 0,
 ) -> float:
     H: list[int] = list(range(1, data["horizon"] + 1))
     Q: list[str] = data["qualifications"]
@@ -218,9 +223,12 @@ def solve_problem(
     model.addConstrs((E[j] - B[j] <= max_duration_project - 1 for j in J))
 
     # Parameters
-    model.Params.OutputFlag = 0
+    # model.Params.OutputFlag = 0
     model.Params.PoolSearchMode = 0
     model.Params.PoolSolutions = 1
+    model.Params.Threads = multiprocessing.cpu_count()
+    if timeout > 0:
+        model.Params.TimeLimit = timeout
 
     model.optimize()
     return model.objVal
@@ -228,25 +236,36 @@ def solve_problem(
 
 def main() -> None:
     size: str = sys.argv[1]
-    day: int = int(sys.argv[2])
+    is_odd: bool = int(sys.argv[2]) % 2 == 1
+    if len(sys.argv) > 3:
+        timeout: int = int(sys.argv[3])
+    else:
+        timeout: int = 0
+
     data: ProblemData = get_data(size)
     folder_path: str = f"solutions/{size}"
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
-    file_path: str = f"{folder_path}/{day}.json"
-    try:
-        with open(file_path, "r") as f:
-            solutions: dict = json.load(f)
-    except FileNotFoundError:
-        solutions: dict = {}
 
-    for nb_project in tqdm(range(len(data["jobs"]), 0, -1)):
-        if str(nb_project) in solutions:
-            continue
-        solution: float = solve_problem(data, day, nb_project)
-        solutions[nb_project] = solution
-        with open(file_path, "w") as f:
-            json.dump(solutions, f, indent=4)
+    for day in range(data["horizon"] + 1 if is_odd else data["horizon"], 0, -2):
+        print(f"================== Day {day} ==================")
+        file_path: str = f"{folder_path}/{day}.json"
+        try:
+            with open(file_path, "r") as f:
+                solutions: dict = json.load(f)
+        except FileNotFoundError:
+            solutions: dict = {}
+
+        for nb_project in tqdm(range(len(data["jobs"]), 0, -1)):
+            print(
+                f"==================================== Nb project {nb_project} ===================================="
+            )
+            if str(nb_project) in solutions:
+                continue
+            solution: float = solve_problem(data, day, nb_project, timeout)
+            solutions[nb_project] = solution
+            with open(file_path, "w") as f:
+                json.dump(solutions, f, indent=4)
 
 
 if __name__ == "__main__":
