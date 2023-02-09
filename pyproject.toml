@@ -6,9 +6,11 @@ authors = ["Yoan Gabison <yoan.gabison@student-cs.fr>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.12"
 gurobipy = "^10.0.0"
 tqdm = "^4.64.1"
+pandas = "^1.5.3"
+scipy = "^1.10.0"
 
 
 [build-system]
