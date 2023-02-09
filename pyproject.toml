@@ -17,3 +17,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 compu_opti = "optimization.main:main"
+merge_solutions = "optimization.merge_solutions:main"
