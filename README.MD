@@ -7,7 +7,7 @@
 </h1>
 
 ## Auteurs
-Y. Gabison, F. Deseure--Charron
+Y. Gabison, F. Deseure--Charron, M. Bridoux
 
 ## Contexte
 Le projet se concentre sur la société CompuOpti, qui conçoit et implémente des solutions d'optimisation et d'aide à la décision pour ses clients. CompuOpti emploie plusieurs ingénieurs-développeurs qui travaillent sur les projets clients. Chaque projet nécessite une certaine quantité de compétences spécifiques pour être accompli (optimisation, gestion de projet, développement web, etc.).
